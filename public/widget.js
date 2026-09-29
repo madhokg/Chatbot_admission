@@ -142,7 +142,8 @@
           message: field("message").value, website: field("website").value, consent: field("consent").checked,
         }),
       });
-      const d = await r.json();
+      let d = {};
+      try { d = await r.json(); } catch { throw new Error("Could not reach the callback service. Please try again in a minute or contact the admissions office."); }
       if (!r.ok) throw new Error(d.error || "Could not send. Please try again.");
       lform.reset(); lead.hidden = true;
       add("Thank you! Your details have been sent to the admissions team. They will contact you soon.", "bot");
