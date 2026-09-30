@@ -6,8 +6,12 @@ import fs from "node:fs";
 
 const app = express();
 app.set("trust proxy", 1); // needed on hosts like Render so rate limiting sees each visitor's real IP
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY; // key stays on the server
-const MODEL = process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4";
+// AI provider settings. Works with any OpenAI-compatible service (Gemini, OpenRouter, Groq...).
+// The old OPENROUTER_* names still work if the new LLM_* names are not set.
+const LLM_KEY = process.env.LLM_API_KEY || process.env.OPENROUTER_API_KEY; // key stays on the server
+const LLM_BASE = (process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/+$/, "");
+const MODEL = process.env.LLM_MODEL || process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4";
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 1000; // Gemini "thinking" models need extra room
 const KB = JSON.parse(fs.readFileSync("./knowledge.json", "utf8"));
 const SCHOOL = process.env.SCHOOL_NAME || "our school";
 const CONTACT = process.env.ADMISSIONS_CONTACT || "the admissions office";
@@ -83,22 +87,20 @@ Reply in the language the user writes in.
 ADMISSION INFORMATION:
 ${context.length ? context.join("\n") : "(No matching information found.)"}`;
 
-    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${LLM_KEY}` };
+    if (LLM_BASE.includes("openrouter.ai")) headers["X-Title"] = `${SCHOOL} admissions chatbot`;
+    const r = await fetch(`${LLM_BASE}/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${OPENROUTER_KEY}`,
-        "X-Title": `${SCHOOL} admissions chatbot`,
-      },
+      headers,
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 500,
+        max_tokens: MAX_TOKENS,
         messages: [{ role: "system", content: system }, ...messages],
       }),
     });
     const data = await r.json();
     if (!r.ok) {
-      console.error("OpenRouter error:", r.status, JSON.stringify(data));
+      console.error("AI provider error:", r.status, JSON.stringify(data));
       return res.status(500).json({ error: `Something went wrong. Please contact ${CONTACT}.` });
     }
     const reply = data.choices?.[0]?.message?.content || `Sorry, I could not answer that. Please contact ${CONTACT}.`;
